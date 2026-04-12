@@ -5,8 +5,8 @@ import KernelPipeline from './components/KernelPipeline';
 import TerminalOutput from './components/TerminalOutput';
 import AuditLog from './components/AuditLog';
 import ThreatMonitor from './components/ThreatMonitor';
-import { DEFAULT_PROCESSES, SYSCALL_TYPES, buildInitialACL, buildInitialQuarantine } from './core/processManager';
-import { createLogEntry } from './core/logger';
+import { DEFAULT_PROCESSES, SYSCALL_TYPES, buildInitialACL, buildInitialQuarantine, buildInitialTokens, validateToken, checkTrustLevel, generateToken } from './core/processManager';
+import { createLogEntry, createACLChangeLog } from './core/logger';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const MAX_LOGS = 200;
@@ -25,6 +25,7 @@ const initialState = {
   selectedProc: 'P1',
   acl: buildInitialACL(),
   quarantine: buildInitialQuarantine(),
+  tokens: buildInitialTokens(),
   logs: [],
   pipeline: emptyPipeline(),
   idsThreshold: 3,
@@ -40,13 +41,21 @@ function reducer(state, action) {
       const newAcl = { ...state.acl };
       newAcl[action.pid] = { ...newAcl[action.pid] };
       newAcl[action.pid][action.syscall] = !newAcl[action.pid][action.syscall];
-      return { ...state, acl: newAcl };
+      const log = createACLChangeLog(action.pid, action.syscall, newAcl[action.pid][action.syscall]);
+      const newLogs = [...state.logs, log].slice(-MAX_LOGS);
+      return { ...state, acl: newAcl, logs: newLogs };
     }
 
     case 'TOGGLE_QUARANTINE': {
       const newQ = { ...state.quarantine };
       newQ[action.pid] = !newQ[action.pid];
       return { ...state, quarantine: newQ };
+    }
+    
+    case 'FORGE_TOKEN': {
+      const newT = { ...state.tokens };
+      newT[action.pid] = { ...newT[action.pid], isValid: false };
+      return { ...state, tokens: newT };
     }
 
     case 'SET_PIPELINE':
@@ -153,20 +162,38 @@ export default function App() {
     else await stageDelay();
     if (abortRef.current) return;
 
-    // Read quarantine from latest state (we access it via a closure trick — check state ref)
-    // Since we can't easily get latest state in an async function,
-    // we'll use a simple approach: check quarantine from the passed-in state snapshot
-    // This is OK because quarantine changes are rare during a run.
+    // Read state from closures/passed parameters
     const isQuarantined = state.quarantine[processId];
+    const token = state.tokens[processId];
+    
     if (isQuarantined) {
       stages.authn = 'failed';
-      details.authn = `QUARANTINED — blocked at authentication`;
+      details.authn = `QUARANTINED — Process Locked`;
       update();
-      dispatch({ type: 'ADD_LOG', log: createLogEntry(processId, syscall, 'QUARANTINE', target, { uid, authResult: 'QUARANTINED', aclDecision: 'N/A' }) });
+      dispatch({ type: 'ADD_LOG', log: createLogEntry(processId, syscall, 'QUARANTINE', target, { uid, authResult: 'QUARANTINED', aclDecision: 'N/A' }, 'AUTHN', 'Process is currently quarantined') });
       return;
     }
+    
+    const tokenCheck = validateToken(token);
+    if (!tokenCheck.valid) {
+      stages.authn = 'failed';
+      details.authn = tokenCheck.reason;
+      update();
+      dispatch({ type: 'ADD_LOG', log: createLogEntry(processId, syscall, 'DENIED', target, { uid, authResult: 'INVALID TOKEN', aclDecision: 'N/A' }, 'AUTHN', tokenCheck.reason) });
+      return;
+    }
+    
+    const trustCheck = checkTrustLevel(proc.trustLevel, syscall);
+    if (!trustCheck.allowed) {
+       stages.authn = 'failed';
+       details.authn = trustCheck.reason;
+       update();
+       dispatch({ type: 'ADD_LOG', log: createLogEntry(processId, syscall, 'DENIED', target, { uid, authResult: 'INSUFFICIENT TRUST', trustCheckResult: 'FAILED', aclDecision: 'N/A' }, 'AUTHN', trustCheck.reason) });
+       return;
+    }
+
     stages.authn = 'passed';
-    details.authn = `uid:${uid} authenticated`;
+    details.authn = `Auth OK (${proc.trustLevel} trust)`;
     update();
 
     // Stage 3: ACL
@@ -184,7 +211,7 @@ export default function App() {
       stages.exec = 'failed';
       details.exec = 'Blocked';
       update();
-      dispatch({ type: 'ADD_LOG', log: createLogEntry(processId, syscall, 'DENIED', target, { uid, authResult: 'PASS', aclDecision: 'DENIED' }) });
+      dispatch({ type: 'ADD_LOG', log: createLogEntry(processId, syscall, 'DENIED', target, { uid, authResult: 'PASS', aclDecision: 'DENIED' }, 'ACL', 'Denied by Access Control List matrix') });
       return;
     }
     stages.acl = 'passed';
@@ -202,9 +229,9 @@ export default function App() {
     stages.exec = 'passed';
     details.exec = `${syscall} → ${target}`;
     update();
-    dispatch({ type: 'ADD_LOG', log: createLogEntry(processId, syscall, 'ALLOWED', target, { uid, authResult: 'PASS', aclDecision: 'ALLOWED' }) });
+    dispatch({ type: 'ADD_LOG', log: createLogEntry(processId, syscall, 'ALLOWED', target, { uid, authResult: 'PASS', aclDecision: 'ALLOWED' }, null, 'Syscall fully authorized and dispatched') });
 
-  }, [speed, stepMode, state.quarantine, state.acl]);
+  }, [speed, stepMode, state.quarantine, state.acl, state.tokens]);
 
   // ─── Manual trigger ─────────────────────────────────────────────────────
   const handleManualTrigger = useCallback(async (processId, syscall, target) => {
@@ -221,14 +248,20 @@ export default function App() {
     if (isRunning) return;
     setIsRunning(true);
     abortRef.current = false;
+    
+    if (scenario.tokenAction === 'forge') {
+       dispatch({ type: 'FORGE_TOKEN', pid: scenario.steps[0].processId });
+    }
+    
     for (const step of scenario.steps) {
       if (abortRef.current) break;
       dispatch({ type: 'RESET_PIPELINE' });
       dispatch({ type: 'SELECT_PROC', pid: step.processId });
       await runPipeline(step.processId, step.syscall, step.target);
       if (abortRef.current) break;
-      // Brief pause between steps
-      await new Promise(r => setTimeout(r, Math.max(200, speed / 2)));
+      // Brief pause between steps (faster if flooding)
+      const delay = scenario.isFlood ? Math.max(50, speed / 4) : Math.max(200, speed / 2);
+      await new Promise(r => setTimeout(r, delay));
     }
     dispatch({ type: 'RESET_PIPELINE' });
     setIsRunning(false);
@@ -293,6 +326,7 @@ export default function App() {
           onToggleACL={(pid, sc) => dispatch({ type: 'TOGGLE_ACL', pid, syscall: sc })}
           quarantine={state.quarantine}
           onToggleQuarantine={pid => dispatch({ type: 'TOGGLE_QUARANTINE', pid })}
+          tokens={state.tokens}
           onManualTrigger={handleManualTrigger}
           onLaunchAttack={handleLaunchAttack}
           isRunning={isRunning}

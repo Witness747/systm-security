@@ -9,6 +9,7 @@ export default function ControlRoom({
   onToggleACL,
   quarantine,
   onToggleQuarantine,
+  tokens,
   onManualTrigger,
   onLaunchAttack,
   isRunning,
@@ -56,9 +57,17 @@ export default function ControlRoom({
                     <button
                       className={`btn-xs ${isQ ? 'active' : ''}`}
                       onClick={(e) => { e.stopPropagation(); onToggleQuarantine(pid); }}
+                      title="Toggle Quarantine"
                     >
                       {isQ ? '🔒 Locked' : '🔓 Free'}
                     </button>
+                    <div 
+                      className={`btn-xs ${!tokens[pid]?.isValid ? 'active' : ''}`}
+                      title={tokens[pid]?.isValid ? "Token Valid" : "Token Forged/Revoked"}
+                      style={{ cursor: 'default' }}
+                    >
+                      {tokens[pid]?.isValid ? '✓ Auth OK' : '⚠ Invalid'}
+                    </div>
                     <button
                       className="btn-xs"
                       onClick={(e) => { e.stopPropagation(); setInspecting(inspecting === pid ? null : pid); }}

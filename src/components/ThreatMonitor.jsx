@@ -1,5 +1,6 @@
 import React from 'react';
 import { DEFAULT_PROCESSES, SYSCALL_TYPES, SYSCALL_LABELS } from '../core/processManager';
+import { getSeverityColor } from '../core/logger';
 
 export default function ThreatMonitor({ logs, acl, onToggleACL, idsThreshold, onSetIdsThreshold, isUnderAttack }) {
   const total = logs.length;
@@ -86,7 +87,7 @@ export default function ThreatMonitor({ logs, acl, onToggleACL, idsThreshold, on
                 className="fault-bar"
                 style={{
                   height: '100%',
-                  background: log.status === 'ALLOWED' ? 'var(--clr-success)' : 'var(--clr-danger)',
+                  background: log.status === 'ALLOWED' ? 'var(--clr-success)' : getSeverityColor(log.severity) || 'var(--clr-danger)',
                   opacity: 0.5 + (i / last12.length) * 0.5,
                 }}
               />
@@ -130,7 +131,7 @@ export default function ThreatMonitor({ logs, acl, onToggleACL, idsThreshold, on
           ) : (
             recentDenials.map(log => (
               <div key={log.id} className="denial-feed-item">
-                <span className="deny-dot" />
+                <span className="deny-dot" style={{ background: getSeverityColor(log.severity) || 'var(--clr-danger)' }} />
                 <span className="font-bold text-info">{log.processId}</span>
                 <span>{SYSCALL_LABELS[log.syscall] || log.syscall}</span>
                 <span className="ml-auto text-[9px] text-slate-500">{log.time}</span>

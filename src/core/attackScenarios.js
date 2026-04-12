@@ -1,13 +1,20 @@
 /**
  * Attack Scenarios
  * Pre-built sequences of syscalls that simulate real-world attack patterns.
+ *
+ * The five required scenarios from the SCIES spec:
+ *   1. Privilege Escalation
+ *   2. Syscall Flooding (DoS)
+ *   3. Token Forgery
+ *   4. ACL Bypass Attempt
+ *   5. Lateral Movement
  */
 
 export const ATTACK_SCENARIOS = [
   {
     id: 'priv_esc',
     name: 'Privilege Escalation',
-    description: 'Malware tries to fork, execute, and write — escalating privileges.',
+    description: 'Malware tries to fork, execute memory, and write to sensitive system files — escalating privileges.',
     color: 'var(--clr-danger)',
     steps: [
       { processId: 'P3', syscall: 'proc_fork',   target: '/bin/sh' },
@@ -17,55 +24,61 @@ export const ATTACK_SCENARIOS = [
     ],
   },
   {
-    id: 'ransomware',
-    name: 'Ransomware',
-    description: 'Encrypts files by reading then deleting originals.',
-    color: 'var(--clr-warning)',
-    steps: [
-      { processId: 'P3', syscall: 'file_read',   target: '/home/user/documents/' },
-      { processId: 'P3', syscall: 'file_write',  target: '/home/user/documents.enc' },
-      { processId: 'P3', syscall: 'file_delete', target: '/home/user/documents/' },
-      { processId: 'P3', syscall: 'file_write',  target: '/home/user/RANSOM_NOTE.txt' },
-      { processId: 'P3', syscall: 'net_connect', target: 'c2server.evil:443' },
-    ],
-  },
-  {
-    id: 'ddos',
-    name: 'DDoS Flood',
-    description: 'Opens mass network connections to flood target.',
+    id: 'syscall_flood',
+    name: 'Syscall Flooding',
+    description: 'DoS via rapid syscall bursts — floods the pipeline with repeated network and fork calls.',
     color: 'var(--clr-info)',
+    isFlood: true, // flag for rate-based detection
     steps: [
       { processId: 'P3', syscall: 'net_connect', target: '10.0.0.1:80' },
       { processId: 'P3', syscall: 'net_connect', target: '10.0.0.1:80' },
       { processId: 'P3', syscall: 'net_connect', target: '10.0.0.1:443' },
-      { processId: 'P3', syscall: 'proc_fork',   target: 'flood_worker' },
+      { processId: 'P3', syscall: 'proc_fork',   target: 'flood_worker_1' },
       { processId: 'P3', syscall: 'net_connect', target: '10.0.0.1:8080' },
+      { processId: 'P3', syscall: 'net_connect', target: '10.0.0.1:8443' },
+      { processId: 'P3', syscall: 'proc_fork',   target: 'flood_worker_2' },
+      { processId: 'P3', syscall: 'net_connect', target: '10.0.0.1:9090' },
     ],
   },
   {
-    id: 'exfiltration',
-    name: 'Data Exfiltration',
-    description: 'Reads sensitive files and sends them over the network.',
+    id: 'token_forgery',
+    name: 'Token Forgery',
+    description: 'Injects invalid/expired credentials — attempts to bypass authentication with forged tokens.',
     color: 'var(--clr-purple)',
+    tokenAction: 'forge', // signal to App.jsx to forge the token before running
     steps: [
-      { processId: 'P1', syscall: 'file_read',   target: '/etc/passwd' },
-      { processId: 'P1', syscall: 'file_read',   target: '/var/log/auth.log' },
-      { processId: 'P1', syscall: 'net_connect', target: 'exfil.attacker.com:9999' },
-      { processId: 'P1', syscall: 'file_read',   target: '/home/user/.ssh/id_rsa' },
-      { processId: 'P1', syscall: 'net_connect', target: 'exfil.attacker.com:9999' },
+      { processId: 'P3', syscall: 'file_read',   target: '/etc/shadow' },
+      { processId: 'P3', syscall: 'file_write',  target: '/tmp/forged_creds' },
+      { processId: 'P3', syscall: 'net_connect', target: 'c2server.evil:443' },
+      { processId: 'P3', syscall: 'mem_exec',    target: '/tmp/inject_token.so' },
     ],
   },
   {
-    id: 'insider',
-    name: 'Insider Threat',
-    description: 'Admin process performs suspicious deletions and memory executions.',
+    id: 'acl_bypass',
+    name: 'ACL Bypass Attempt',
+    description: 'Crafted requests exploiting misconfigured rules — probes every syscall type across multiple processes.',
     color: 'var(--clr-warning)',
     steps: [
-      { processId: 'P2', syscall: 'file_delete', target: '/var/log/audit.log' },
-      { processId: 'P2', syscall: 'file_delete', target: '/var/log/syslog' },
-      { processId: 'P2', syscall: 'mem_exec',    target: '/tmp/backdoor.so' },
-      { processId: 'P2', syscall: 'net_connect', target: 'darkweb.onion:443' },
-      { processId: 'P2', syscall: 'file_write',  target: '/root/.bashrc' },
+      { processId: 'P1', syscall: 'file_delete', target: '/var/log/audit.log' },     // user can't delete
+      { processId: 'P1', syscall: 'mem_exec',    target: '/tmp/rootkit.bin' },        // user can't exec memory
+      { processId: 'P1', syscall: 'proc_fork',   target: 'shadow_process' },          // user can't fork
+      { processId: 'P4', syscall: 'file_write',  target: '/etc/nginx/nginx.conf' },   // webserver can't write
+      { processId: 'P4', syscall: 'proc_fork',   target: 'rogue_worker' },            // webserver can't fork
+      { processId: 'P4', syscall: 'file_delete', target: '/var/www/html/index.html' },// webserver can't delete
+    ],
+  },
+  {
+    id: 'lateral_movement',
+    name: 'Lateral Movement',
+    description: 'Chained syscalls probing unauthorized resources — reads credentials, pivots across network boundaries.',
+    color: 'var(--clr-cyan)',
+    steps: [
+      { processId: 'P1', syscall: 'file_read',   target: '/etc/passwd' },
+      { processId: 'P1', syscall: 'file_read',   target: '/home/user/.ssh/id_rsa' },
+      { processId: 'P1', syscall: 'net_connect', target: '192.168.1.50:22' },
+      { processId: 'P1', syscall: 'file_read',   target: '/var/log/auth.log' },
+      { processId: 'P1', syscall: 'net_connect', target: '192.168.1.100:3306' },
+      { processId: 'P1', syscall: 'file_read',   target: '/etc/shadow' },
     ],
   },
 ];

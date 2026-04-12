@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { SYSCALL_LABELS } from '../core/processManager';
+import { exportLogsCSV, exportLogsJSON, downloadFile } from '../core/logger';
 
 const TABS = [
   { key: 'all',   label: 'All' },
@@ -11,17 +12,25 @@ export default function AuditLog({ logs }) {
   const [activeTab, setActiveTab] = useState('all');
   const [expandedId, setExpandedId] = useState(null);
 
+  const [filterPid, setFilterPid] = useState('');
+  const [filterSyscall, setFilterSyscall] = useState('');
+
   const filtered = logs.filter(log => {
-    if (activeTab === 'allow') return log.status === 'ALLOWED';
-    if (activeTab === 'deny') return log.status === 'DENIED' || log.status === 'QUARANTINE';
+    if (activeTab === 'allow' && log.status !== 'ALLOWED') return false;
+    if (activeTab === 'deny' && log.status !== 'DENIED' && log.status !== 'QUARANTINE') return false;
+    if (filterPid && !log.processId.toLowerCase().includes(filterPid.toLowerCase())) return false;
+    if (filterSyscall && !log.syscall.toLowerCase().includes(filterSyscall.toLowerCase())) return false;
     return true;
   });
 
-  const getRiskLevel = (log) => {
-    if (log.status === 'QUARANTINE') return 'CRITICAL';
-    if (log.status === 'DENIED') return 'HIGH';
-    if (['file_delete', 'mem_exec', 'proc_fork'].includes(log.syscall)) return 'MEDIUM';
-    return 'LOW';
+  const handleExportJSON = () => {
+    const json = exportLogsJSON(filtered);
+    downloadFile(json, 'syscall_audit_log.json', 'application/json');
+  };
+
+  const handleExportCSV = () => {
+    const csv = exportLogsCSV(filtered);
+    downloadFile(csv, 'syscall_audit_log.csv', 'text/csv');
   };
 
   return (
@@ -37,6 +46,32 @@ export default function AuditLog({ logs }) {
             {tab.label}
           </button>
         ))}
+      </div>
+      
+      <div className="audit-filters" style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+        <input 
+          type="text" 
+          placeholder="Filter PID..." 
+          value={filterPid} 
+          onChange={e => setFilterPid(e.target.value)}
+          className="filter-input"
+          style={{ background: 'var(--clr-bg-3)', border: '1px solid var(--clr-border)', padding: '4px 8px', borderRadius: '4px', fontSize: '10px', color: 'var(--clr-text)' }}
+        />
+        <input 
+          type="text" 
+          placeholder="Filter Syscall..." 
+          value={filterSyscall} 
+          onChange={e => setFilterSyscall(e.target.value)}
+          className="filter-input"
+          style={{ background: 'var(--clr-bg-3)', border: '1px solid var(--clr-border)', padding: '4px 8px', borderRadius: '4px', fontSize: '10px', color: 'var(--clr-text)' }}
+        />
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: '6px' }}>
+          <button onClick={handleExportCSV} className="btn-xs" style={{ padding: '4px 8px' }}>CSV</button>
+          <button onClick={handleExportJSON} className="btn-xs" style={{ padding: '4px 8px' }}>JSON</button>
+        </div>
+      </div>
+      
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '4px' }}>
         <span className="ml-auto text-[9px] text-slate-500">{filtered.length} entries</span>
       </div>
 
@@ -85,13 +120,13 @@ export default function AuditLog({ logs }) {
                               <span className="audit-expand-value">{log.detail?.uid ?? '—'}</span>
                             </div>
                             <div className="audit-expand-item">
-                              <span className="audit-expand-label">Risk Level</span>
+                              <span className="audit-expand-label">Severity</span>
                               <span className="audit-expand-value" style={{
-                                color: getRiskLevel(log) === 'CRITICAL' ? 'var(--clr-danger)' :
-                                       getRiskLevel(log) === 'HIGH' ? 'var(--clr-warning)' :
-                                       getRiskLevel(log) === 'MEDIUM' ? 'var(--clr-info)' : 'var(--clr-success)'
+                                color: log.severity === 'CRITICAL' ? 'var(--clr-danger)' :
+                                       log.severity === 'HIGH' ? 'var(--clr-warning)' :
+                                       log.severity === 'MEDIUM' ? 'var(--clr-info)' : 'var(--clr-success)'
                               }}>
-                                {getRiskLevel(log)}
+                                {log.severity || 'LOW'} ({log.riskScore ?? 0})
                               </span>
                             </div>
                             <div className="audit-expand-item">
@@ -99,8 +134,15 @@ export default function AuditLog({ logs }) {
                               <span className="audit-expand-value">{log.detail?.authResult || '—'}</span>
                             </div>
                             <div className="audit-expand-item">
-                              <span className="audit-expand-label">ACL Decision</span>
-                              <span className="audit-expand-value">{log.detail?.aclDecision || '—'}</span>
+                              <span className="audit-expand-label">Stage Stopped</span>
+                              <span className="audit-expand-value">{log.rejectedAtStage || (log.status === 'ALLOWED' ? 'Completed' : '—')}</span>
+                            </div>
+                          </div>
+                          
+                          <div style={{ marginTop: '12px' }}>
+                            <span className="audit-expand-label" style={{ display: 'block', marginBottom: '4px' }}>Reason</span>
+                            <div style={{ background: 'var(--clr-bg-4)', padding: '6px 10px', borderRadius: '4px', color: 'var(--clr-text)' }}>
+                              {log.reason || 'No detailed reason provided.'}
                             </div>
                           </div>
                         </div>
