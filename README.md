@@ -43,3 +43,4 @@ npm run dev
 ```
 
 Open `http://localhost:5173` and start the simulator from the intro screen.
+
