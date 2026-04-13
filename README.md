@@ -87,7 +87,3 @@ SCIES bridges the gap between **theory and practice** in OS security education. 
 - Learn ACL design by seeing the *consequences* of misconfiguration in real time
 
 ---
-
-## Summary
-
-> SCIES is a React-based OS kernel security simulator that enforces a four-stage syscall validation pipeline — authentication, access control, execution, and logging — while providing an interactive threat monitor, configurable ACLs, and a suite of attack scenario simulations for educational and research use.
