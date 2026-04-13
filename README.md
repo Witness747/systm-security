@@ -1,4 +1,3 @@
-# SCIES — System Call Interface for Enhanced Security
 
 ## Project Description
 
@@ -84,6 +83,4 @@ SCIES bridges the gap between **theory and practice** in OS security education. 
 - Understand *why* syscall filtering is fundamental to OS hardening
 - Visualize how real security layers like **seccomp**, **SELinux**, and **capabilities** work conceptually
 - Test attack patterns in a safe, sandboxed environment
-- Learn ACL design by seeing the *consequences* of misconfiguration in real time
-
----
+- Learn ACL design by seeing the *consequences* of misconfiguration in r
