@@ -1,46 +1,93 @@
 # SCIES — System Call Interface for Enhanced Security
 
-An interactive, educational cybersecurity dashboard that simulates how an OS kernel intercepts and processes system calls through a multi-stage security pipeline. Built to make kernel-level security concepts tangible and explorable for students and learners.
+## Project Description
 
-## What It Does
+**SCIES** is a cybersecurity simulation and educational platform that models how a hardened operating system kernel handles system calls through a multi-stage security pipeline. Rather than allowing raw, unchecked syscall access, SCIES enforces a structured validation chain — mimicking real-world OS security practices like those found in SELinux, AppArmor, and seccomp-BPF filters.
 
-SCIES lets you watch system calls (file reads, network connections, process forks, memory execution) flow through a live **INIT → AUTHN → ACL → EXEC** pipeline in real time. You can trigger attacks, misconfigure ACLs, forge tokens, and observe exactly where and why the kernel blocks or permits each call — all in a browser.
+---
+
+## Core Concept
+
+Every process in an operating system must request privileged resources — files, memory, network sockets — through **system calls**. In most systems, this interface is minimally guarded. SCIES simulates what a *security-first* kernel would look like: one where every syscall passes through layered checks before execution is permitted.
+
+---
+
+## The Four-Stage Security Pipeline
+
+```
+[ Process ] ──► [ INIT ] ──► [ AUTHN ] ──► [ ACL ] ──► [ EXEC ]
+                  Stage 1      Stage 2       Stage 3     Stage 4
+```
+
+| Stage | Name | Responsibility |
+|---|---|---|
+| **1** | INIT | Registers the syscall, validates process context and syscall signature |
+| **2** | AUTHN | Authenticates the calling process — checks credentials, tokens, or session validity |
+| **3** | ACL | Evaluates Access Control Lists — does this process *have permission* for this resource? |
+| **4** | EXEC | Executes the syscall only if all prior stages pass; logs the outcome |
+
+Any failure at any stage **terminates the request immediately** and raises an alert.
+
+---
 
 ## Key Features
 
-- **Animated Kernel Pipeline** — Visualize each syscall moving through four security stages with live pass/deny feedback
-- **Process Control Room** — Manage four simulated processes (user shell, admin daemon, malware agent, web server), toggle ACL rules, and quarantine suspicious actors
-- **Token-Based AuthN** — Session tokens with TTL expiry; simulate token forgery and revocation
-- **6-Tier Trust Hierarchy** — From Sandboxed up to Root, each syscall enforces a minimum trust requirement
-- **Editable ACL Matrix** — Modify per-process, per-syscall permissions on the fly and watch the downstream effects
-- **IDS Threat Monitor** — Configurable denial threshold that triggers an UNDER ATTACK alert when the system is flooded
-- **Audit Log & Terminal** — Full `auditd`-style log with risk scores, severity levels, and JSON/CSV export
+### 🔐 Authentication Mechanisms
+- Per-process identity tokens with expiry
+- Session-based credential validation
+- Configurable trust levels (root, user, guest, sandboxed)
 
-## Attack Scenarios
+### 📋 Configurable ACL Engine
+- Define per-resource, per-process permission matrices
+- Whitelist/blacklist syscall categories (file I/O, network, process spawning, memory ops)
+- Runtime ACL modification with audit trail
 
-Five pre-built attack simulations cover real-world patterns:
+### ⚔️ Attack Scenario Simulator
+Five built-in attack simulations to test the pipeline's resilience:
+1. **Privilege Escalation** — process attempting to gain elevated permissions
+2. **Syscall Flooding** — DoS via rapid syscall bursts
+3. **Token Forgery** — invalid credential injection
+4. **ACL Bypass Attempt** — crafted requests exploiting misconfigured rules
+5. **Lateral Movement** — chained syscalls probing unauthorized resources
 
-| Scenario | Pattern |
-|---|---|
-| Privilege Escalation | Malware forks, execs memory, writes to `/etc/shadow` |
-| Syscall Flooding (DoS) | Burst of network/fork calls to overwhelm the pipeline |
-| Token Forgery | Invalid credentials injected to bypass authentication |
-| ACL Bypass | Probes misconfigured rules across multiple processes |
-| Lateral Movement | SSH key reads, cross-network pivoting |
+### 📊 IDS-Style Threat Monitor
+- Real-time dashboard showing live syscall traffic
+- Anomaly detection with configurable thresholds
+- Color-coded severity levels (INFO → WARNING → CRITICAL)
+- Persistent, filterable event log
+
+### 📁 Detailed Audit Logging
+Every syscall attempt — successful or blocked — is recorded with:
+- Timestamp, process ID, syscall type
+- Stage at which it was approved or rejected
+- Reason for denial, if applicable
+- Risk score per event
+
+---
 
 ## Tech Stack
 
-- **React 19 + Vite** — Frontend and dev tooling
-- **Tailwind CSS v4** — Styling with dark/light theme support
-- **OGL (WebGL)** — Radar background on the landing screen
-- **useReducer** — Centralized application state
+| Layer | Technology |
+|---|---|
+| Frontend / UI | React 19 + Vite |
+| Styling | Tailwind CSS |
+| Core Simulation | Vanilla JS modules (`processManager.js`, `attackScenarios.js`) |
+| State Management | React Context / useState |
+| Visualization | Custom dashboard components |
 
-## Getting Started
+---
 
-```bash
-npm install
-npm run dev
-```
+## Why It Matters
 
-Open `http://localhost:5173` and start the simulator from the intro screen.
+SCIES bridges the gap between **theory and practice** in OS security education. It lets developers, students, and security researchers:
 
+- Understand *why* syscall filtering is fundamental to OS hardening
+- Visualize how real security layers like **seccomp**, **SELinux**, and **capabilities** work conceptually
+- Test attack patterns in a safe, sandboxed environment
+- Learn ACL design by seeing the *consequences* of misconfiguration in real time
+
+---
+
+## Summary
+
+> SCIES is a React-based OS kernel security simulator that enforces a four-stage syscall validation pipeline — authentication, access control, execution, and logging — while providing an interactive threat monitor, configurable ACLs, and a suite of attack scenario simulations for educational and research use.
