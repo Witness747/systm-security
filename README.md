@@ -75,7 +75,6 @@ Every syscall attempt — successful or blocked — is recorded with:
 | State Management | React Context / useState |
 | Visualization | Custom dashboard components |
 
----
 
 ## Why It Matters
 
@@ -91,3 +90,15 @@ SCIES bridges the gap between **theory and practice** in OS security education. 
 ## Summary
 
 > SCIES is a React-based OS kernel security simulator that enforces a four-stage syscall validation pipeline — authentication, access control, execution, and logging — while providing an interactive threat monitor, configurable ACLs, and a suite of attack scenario simulations for educational and research use.
+=======
+
+---
+
+## Why It Matters
+
+SCIES bridges the gap between **theory and practice** in OS security education. It lets developers, students, and security researchers:
+
+- Understand *why* syscall filtering is fundamental to OS hardening
+- Visualize how real security layers like **seccomp**, **SELinux**, and **capabilities** work conceptually
+- Test attack patterns in a safe, sandboxed environment
+
