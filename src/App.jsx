@@ -5,8 +5,8 @@ import KernelPipeline from './components/KernelPipeline';
 import TerminalOutput from './components/TerminalOutput';
 import AuditLog from './components/AuditLog';
 import ThreatMonitor from './components/ThreatMonitor';
-import { DEFAULT_PROCESSES, SYSCALL_TYPES, buildInitialACL, buildInitialQuarantine, buildInitialTokens, validateToken, checkTrustLevel, generateToken } from './core/processManager';
-import { createLogEntry, createACLChangeLog } from './core/logger';
+import { DEFAULT_PROCESSES, SYSCALL_TYPES, buildInitialACL, buildInitialQuarantine, buildInitialTokens, validateToken, checkTrustLevel, generateToken, resetTokenCounter } from './core/processManager';
+import { createLogEntry, createACLChangeLog, resetLogCounter } from './core/logger';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const MAX_LOGS = 200;
@@ -78,10 +78,27 @@ function reducer(state, action) {
       return { ...state, idsThreshold: action.value, isUnderAttack: recentDenials >= action.value };
     }
 
+    case 'REFRESH_TOKENS': {
+      const newTokens = { ...state.tokens };
+      const now = Date.now();
+      for (const pid of Object.keys(newTokens)) {
+        // Only refresh tokens that are still valid (not forged/revoked)
+        if (newTokens[pid]?.isValid) {
+          // Refresh if token will expire within 30 seconds
+          if (newTokens[pid].expiresAt - now < 30000) {
+            newTokens[pid] = generateToken(pid);
+          }
+        }
+      }
+      return { ...state, tokens: newTokens };
+    }
+
     case 'RESET_PIPELINE':
       return { ...state, pipeline: emptyPipeline() };
 
     case 'RESET_ALL':
+      resetLogCounter();
+      resetTokenCounter();
       return createInitialState();
 
     default:
@@ -105,6 +122,14 @@ export default function App() {
   useEffect(() => { tokensRef.current = state.tokens; }, [state.tokens]);
   useEffect(() => { quarantineRef.current = state.quarantine; }, [state.quarantine]);
   useEffect(() => { aclRef.current = state.acl; }, [state.acl]);
+
+  // Auto-refresh tokens before they expire (every 30s check)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      dispatch({ type: 'REFRESH_TOKENS' });
+    }, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   // For step mode: resolve a promise when user clicks Continue
   const continueRef = useRef(null);

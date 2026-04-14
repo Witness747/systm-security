@@ -81,18 +81,22 @@ export default function ThreatMonitor({ logs, acl, onToggleACL, idsThreshold, on
           {last12.length === 0 ? (
             <div className="flex-1 flex items-center justify-center text-[10px] text-slate-600">No data</div>
           ) : (
-            last12.map((log, i) => (
-              <div
-                key={log.id}
-                className="fault-bar"
-                style={{
-                  height: '100%',
-                  background: log.status === 'ALLOWED' ? 'var(--clr-success)' : getSeverityColor(log.severity) || 'var(--clr-danger)',
-                  opacity: 0.5 + (i / last12.length) * 0.5,
-                }}
-              />
-            ))
-          )}
+            last12.map((log, i) => {
+              const barHeight = Math.max(15, Math.min(100, (log.riskScore ?? 10) + 10));
+              return (
+                <div
+                  key={log.id}
+                  className="fault-bar"
+                  title={`${log.processId} ${log.syscall} — Risk: ${log.riskScore ?? 0}`}
+                  style={{
+                    height: `${barHeight}%`,
+                    background: log.status === 'ALLOWED' ? 'var(--clr-success)' : getSeverityColor(log.severity) || 'var(--clr-danger)',
+                    opacity: 0.5 + (i / last12.length) * 0.5,
+                  }}
+                />
+              );
+            }))
+          }
         </div>
       </div>
 

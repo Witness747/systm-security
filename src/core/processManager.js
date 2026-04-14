@@ -62,6 +62,13 @@ export const DEFAULT_ACL = {
 let tokenCounter = 0;
 
 /**
+ * Reset the token counter (call on simulator reset).
+ */
+export function resetTokenCounter() {
+  tokenCounter = 0;
+}
+
+/**
  * Generate a fresh authentication token for a process.
  * @param {string} pid - Process ID.
  * @param {number} ttlSeconds - Time-to-live in seconds (default 120s = 2 minutes).
