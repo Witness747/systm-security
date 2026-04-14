@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Radar from './Radar';
 import FuzzyText from './FuzzyText';
 import './IntroPage.css';
@@ -22,6 +22,7 @@ const KEYWORDS = [
 export default function IntroPage({ onEnter }) {
   const [visible, setVisible] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  const leavingRef = useRef(false);
 
   // Fade in on mount
   useEffect(() => {
@@ -32,13 +33,19 @@ export default function IntroPage({ onEnter }) {
   // Keyboard shortcut: Enter to start
   useEffect(() => {
     const handler = (e) => {
-      if (e.key === 'Enter') handleStart();
+      if (e.key === 'Enter' && !leavingRef.current) {
+        leavingRef.current = true;
+        setLeaving(true);
+        setTimeout(() => onEnter(), 600);
+      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, []);
+  }, [onEnter]);
 
   const handleStart = () => {
+    if (leavingRef.current) return;
+    leavingRef.current = true;
     setLeaving(true);
     setTimeout(() => onEnter(), 600);
   };

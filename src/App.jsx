@@ -1,12 +1,12 @@
-import React, { useReducer, useState, useCallback, useRef } from 'react';
+import React, { useReducer, useState, useCallback, useRef, useEffect } from 'react';
 import IntroPage from './component/IntroPage';
 import ControlRoom from './components/ControlRoom';
 import KernelPipeline from './components/KernelPipeline';
 import TerminalOutput from './components/TerminalOutput';
 import AuditLog from './components/AuditLog';
 import ThreatMonitor from './components/ThreatMonitor';
-import { DEFAULT_PROCESSES, SYSCALL_TYPES, buildInitialACL, buildInitialQuarantine, buildInitialTokens, validateToken, checkTrustLevel, generateToken } from './core/processManager';
-import { createLogEntry, createACLChangeLog } from './core/logger';
+import { DEFAULT_PROCESSES, SYSCALL_TYPES, buildInitialACL, buildInitialQuarantine, buildInitialTokens, validateToken, checkTrustLevel, generateToken, resetTokenCounter } from './core/processManager';
+import { createLogEntry, createACLChangeLog, resetLogCounter } from './core/logger';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const MAX_LOGS = 200;
@@ -21,16 +21,18 @@ function emptyPipeline() {
 }
 
 // ─── State ───────────────────────────────────────────────────────────────────
-const initialState = {
-  selectedProc: 'P1',
-  acl: buildInitialACL(),
-  quarantine: buildInitialQuarantine(),
-  tokens: buildInitialTokens(),
-  logs: [],
-  pipeline: emptyPipeline(),
-  idsThreshold: 3,
-  isUnderAttack: false,
-};
+function createInitialState() {
+  return {
+    selectedProc: 'P1',
+    acl: buildInitialACL(),
+    quarantine: buildInitialQuarantine(),
+    tokens: buildInitialTokens(),
+    logs: [],
+    pipeline: emptyPipeline(),
+    idsThreshold: 3,
+    isUnderAttack: false,
+  };
+}
 
 function reducer(state, action) {
   switch (action.type) {
@@ -76,11 +78,28 @@ function reducer(state, action) {
       return { ...state, idsThreshold: action.value, isUnderAttack: recentDenials >= action.value };
     }
 
+    case 'REFRESH_TOKENS': {
+      const newTokens = { ...state.tokens };
+      const now = Date.now();
+      for (const pid of Object.keys(newTokens)) {
+        // Only refresh tokens that are still valid (not forged/revoked)
+        if (newTokens[pid]?.isValid) {
+          // Refresh if token will expire within 30 seconds
+          if (newTokens[pid].expiresAt - now < 30000) {
+            newTokens[pid] = generateToken(pid);
+          }
+        }
+      }
+      return { ...state, tokens: newTokens };
+    }
+
     case 'RESET_PIPELINE':
       return { ...state, pipeline: emptyPipeline() };
 
     case 'RESET_ALL':
-      return { ...initialState };
+      resetLogCounter();
+      resetTokenCounter();
+      return createInitialState();
 
     default:
       return state;
@@ -90,11 +109,27 @@ function reducer(state, action) {
 // ─── App ─────────────────────────────────────────────────────────────────────
 export default function App() {
   const [showIntro, setShowIntro] = useState(true);
-  const [state, dispatch] = useReducer(reducer, initialState);
+  const [state, dispatch] = useReducer(reducer, null, createInitialState);
   const [speed, setSpeed] = useState(500);
   const [stepMode, setStepMode] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [theme, setTheme] = useState('dark');
+
+  // Keep a ref to latest state values so async pipeline reads fresh data
+  const tokensRef = useRef(state.tokens);
+  const quarantineRef = useRef(state.quarantine);
+  const aclRef = useRef(state.acl);
+  useEffect(() => { tokensRef.current = state.tokens; }, [state.tokens]);
+  useEffect(() => { quarantineRef.current = state.quarantine; }, [state.quarantine]);
+  useEffect(() => { aclRef.current = state.acl; }, [state.acl]);
+
+  // Auto-refresh tokens before they expire (every 30s check)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      dispatch({ type: 'REFRESH_TOKENS' });
+    }, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   // For step mode: resolve a promise when user clicks Continue
   const continueRef = useRef(null);
@@ -162,9 +197,9 @@ export default function App() {
     else await stageDelay();
     if (abortRef.current) return;
 
-    // Read state from closures/passed parameters
-    const isQuarantined = state.quarantine[processId];
-    const token = state.tokens[processId];
+    // Read from refs to always get the latest state (avoids stale closures)
+    const isQuarantined = quarantineRef.current[processId];
+    const token = tokensRef.current[processId];
     
     if (isQuarantined) {
       stages.authn = 'failed';
@@ -204,7 +239,7 @@ export default function App() {
     else await stageDelay();
     if (abortRef.current) return;
 
-    const isAllowed = state.acl[processId]?.[syscall] ?? false;
+    const isAllowed = aclRef.current[processId]?.[syscall] ?? false;
     if (!isAllowed) {
       stages.acl = 'failed';
       details.acl = `${syscall} DENIED by ACL`;
@@ -231,7 +266,7 @@ export default function App() {
     update();
     dispatch({ type: 'ADD_LOG', log: createLogEntry(processId, syscall, 'ALLOWED', target, { uid, authResult: 'PASS', aclDecision: 'ALLOWED' }, null, 'Syscall fully authorized and dispatched') });
 
-  }, [speed, stepMode, state.quarantine, state.acl, state.tokens]);
+  }, [speed, stepMode]);
 
   // ─── Manual trigger ─────────────────────────────────────────────────────
   const handleManualTrigger = useCallback(async (processId, syscall, target) => {

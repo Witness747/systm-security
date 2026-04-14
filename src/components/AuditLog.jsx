@@ -66,8 +66,8 @@ export default function AuditLog({ logs }) {
           style={{ background: 'var(--clr-bg-3)', border: '1px solid var(--clr-border)', padding: '4px 8px', borderRadius: '4px', fontSize: '10px', color: 'var(--clr-text)' }}
         />
         <div style={{ marginLeft: 'auto', display: 'flex', gap: '6px' }}>
-          <button onClick={handleExportCSV} className="btn-xs" style={{ padding: '4px 8px' }}>CSV</button>
-          <button onClick={handleExportJSON} className="btn-xs" style={{ padding: '4px 8px' }}>JSON</button>
+          <button onClick={handleExportCSV} className="btn-xs" style={{ padding: '5px 12px', fontSize: '10px', minWidth: '48px' }}>CSV</button>
+          <button onClick={handleExportJSON} className="btn-xs" style={{ padding: '5px 12px', fontSize: '10px', minWidth: '48px' }}>JSON</button>
         </div>
       </div>
       
@@ -75,7 +75,7 @@ export default function AuditLog({ logs }) {
         <span className="ml-auto text-[9px] text-slate-500">{filtered.length} entries</span>
       </div>
 
-      <div className="card" style={{ padding: 0, maxHeight: 220, overflowY: 'auto' }}>
+      <div className="card" style={{ padding: 0, maxHeight: 340, overflowY: 'auto' }}>
         {filtered.length === 0 ? (
           <div className="p-6 text-center text-slate-600 text-xs">No entries</div>
         ) : (

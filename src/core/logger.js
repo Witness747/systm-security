@@ -12,6 +12,13 @@
 let logCounter = 0;
 
 /**
+ * Reset the log counter (call on simulator reset).
+ */
+export function resetLogCounter() {
+  logCounter = 0;
+}
+
+/**
  * Compute a numeric risk score (0–100) for a log entry.
  */
 export function computeRiskScore(status, syscall, detail = {}) {
@@ -129,8 +136,15 @@ export function exportLogsJSON(logs) {
  */
 export function exportLogsCSV(logs) {
   const header = 'ID,Time,Process,Syscall,Status,Target,RejectedAt,Reason,RiskScore,Severity';
+  const esc = (v) => {
+    const s = String(v ?? '');
+    if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+      return '"' + s.replace(/"/g, '""') + '"';
+    }
+    return s;
+  };
   const rows = logs.map(l =>
-    `${l.id},${l.time},${l.processId},${l.syscall},${l.status},"${l.target || ''}",${l.rejectedAtStage || ''},\"${l.reason || ''}\",${l.riskScore ?? ''},${l.severity || ''}`
+    [l.id, l.time, l.processId, l.syscall, l.status, l.target || '', l.rejectedAtStage || '', l.reason || '', l.riskScore ?? '', l.severity || ''].map(esc).join(',')
   );
   return [header, ...rows].join('\n');
 }
